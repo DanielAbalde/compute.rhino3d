@@ -9,16 +9,26 @@ using Grasshopper.Kernel;
 using Grasshopper.Kernel.Attributes;
 using Resthopper.IO;
 using Newtonsoft.Json;
-using Rhino.Geometry;
+using Rhino.Geometry; 
 using GH_IO.Types;
 
 namespace Compute.Components
 {
-    [Guid("C69BB52C-88BA-4640-B69F-188D111029E8")]
-    public class HopsComponent : RemoteComponent
+    public interface IParametersConstraint
     {
- 
-        static HopsComponent()
+
+    }
+
+    [Guid("3478296A-E2FF-4C96-A991-25F0DD8D26DE")]
+    public class MaltComponent : RemoteComponent
+    {
+        #region Fields
+        private bool _isDefined;
+        const string TagIsDefined = "MaltIsDefined";
+        #endregion
+
+        #region Constructors
+        static MaltComponent()
         {
             if (!Rhino.Runtime.HostUtils.RunningOnWindows)
                 return;
@@ -32,115 +42,27 @@ namespace Compute.Components
             }
         }
 
-        public HopsComponent()
-          : base("Hops", "Hops", "Solve an external definition using Rhino Compute", "Params", "Util",0,2,0)
-        { 
-        }
-         
-        protected override System.Drawing.Bitmap Icon
+        public MaltComponent()
+          : base("Malt", "Malt", "Solve an external definition using Rhino Compute as hops, but an inmutable parameter configuration",
+                "Params", "Util", 0, 1, 0)
         {
-            get
-            {
-                return Hops24Icon();
-            }
+           
         }
+        #endregion
 
-        static System.Drawing.Bitmap _hops24Icon;
-        static System.Drawing.Bitmap _hops48Icon;
-        static System.Drawing.Bitmap Hops24Icon()
+        #region Methods 
+        public override void AddedToDocument(GH_Document document)
         {
-            if (_hops24Icon == null)
-            {
-                var stream = typeof(HopsComponent).Assembly.GetManifestResourceStream("Hops.resources.Hops_24x24.png");
-                _hops24Icon = new System.Drawing.Bitmap(stream);
-            }
-            return _hops24Icon;
-        }
-        public static System.Drawing.Bitmap Hops48Icon()
-        {
-            if (_hops48Icon == null)
-            {
-                var stream = typeof(HopsComponent).Assembly.GetManifestResourceStream("Hops.resources.Hops_48x48.png");
-                _hops48Icon = new System.Drawing.Bitmap(stream);
-            }
-            return _hops48Icon;
+            base.AddedToDocument(document);
+            if (_isDefined)
+                return;
+            _isDefined = true;
+            // TODO create interface to define input/component/outputs data (name, nickname, description, icon, data type, access...)
         }
 
-        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
-        {
-            base.AppendAdditionalMenuItems(menu);
+        #endregion
 
-            var tsi = new ToolStripMenuItem("&Path...", null, (sender, e) => { ShowSetDefinitionUi(); });
-            tsi.Font = new System.Drawing.Font(tsi.Font, System.Drawing.FontStyle.Bold);
-            menu.Items.Add(tsi);
-
-            AppendMenuLocalCompute(menu);
-            AppendMenuCacheInMemory(menu);
-            AppendMenuCacheInServer(menu); 
-        }
-
-        /// <summary>
-        /// Used for supporting double click on the component. 
-        /// </summary>
-        class ComponentAttributes : GH_ComponentAttributes
-        {
-            HopsComponent _component;
-            public ComponentAttributes(HopsComponent parentComponent) : base(parentComponent)
-            {
-                _component = parentComponent;
-            }
-
-            protected override void Render(GH_Canvas canvas, System.Drawing.Graphics graphics, GH_CanvasChannel channel)
-            {
-                base.Render(canvas, graphics, channel);
-                if (channel == GH_CanvasChannel.Objects &&
-                    GH_Canvas.ZoomFadeMedium > 0 &&
-                    !string.IsNullOrWhiteSpace(_component.RemoteDefinitionLocation)
-                    )
-                {
-                    RenderHop(graphics, GH_Canvas.ZoomFadeMedium, new System.Drawing.PointF(Bounds.Right, Bounds.Bottom));
-                }
-            }
-
-            void RenderHop(System.Drawing.Graphics graphics, int alpha, System.Drawing.PointF anchor)
-            {
-                var boxHops = new System.Drawing.RectangleF(anchor.X - 16, anchor.Y - 8, 16, 16);
-                var bmp = HopsComponent.Hops48Icon();
-                graphics.DrawImage(bmp, boxHops);
-            }
-
-            public override GH_ObjectResponse RespondToMouseDoubleClick(GH_Canvas sender, GH_CanvasMouseEvent e)
-            {
-                try
-                {
-                    _component.ShowSetDefinitionUi();
-                }
-                catch(Exception ex)
-                {
-                    _component.AddRuntimeMessage(GH_RuntimeMessageLevel.Error, ex.Message);
-                }
-                return base.RespondToMouseDoubleClick(sender, e);
-            }
-        }
-
-        public override void CreateAttributes()
-        {
-            Attributes = new ComponentAttributes(this);
-        }
-
-        void ShowSetDefinitionUi()
-        {
-            var form = new SetDefinitionForm(RemoteDefinitionLocation);
-            if(form.ShowModal(Grasshopper.Instances.EtoDocumentEditor))
-            {
-                var comp = Grasshopper.Instances.ComponentServer.FindObjectByName(form.Path, true, true);
-                if (comp != null)
-                    RemoteDefinitionLocation = comp.Guid.ToString();
-                else
-                    RemoteDefinitionLocation = form.Path;
-            }
-        }
-          
+        #region Remote 
         protected override void DefineInputsAndOutputs()
         {
             ClearRuntimeMessages();
@@ -346,7 +268,7 @@ namespace Compute.Components
                             mgr.AddTransformParameter(name, name, inputDescription, access);
                             break;
                         case Grasshopper.Kernel.Parameters.Param_Vector _:
-                            if(input.Default == null)
+                            if (input.Default == null)
                                 mgr.AddVectorParameter(name, name, inputDescription, access);
                             else
                                 mgr.AddVectorParameter(name, name, inputDescription, access, JsonConvert.DeserializeObject<Vector3d>(input.Default.ToString()));
@@ -516,7 +438,141 @@ namespace Compute.Components
             var constructors = typeof(GH_OutputParamManager).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             var mgr = constructors[0].Invoke(new object[] { this }) as GH_OutputParamManager;
             return mgr;
+        }        
+        #endregion
+        
+        #region Icon
+        protected override System.Drawing.Bitmap Icon
+        {
+            get
+            {
+                return Malt24Icon();
+            }
         }
-  
+
+        static System.Drawing.Bitmap _malt24Icon;
+        static System.Drawing.Bitmap _malt48Icon;
+        static System.Drawing.Bitmap Malt24Icon()
+        {
+            if (_malt24Icon == null || true)
+            {
+                var stream = typeof(HopsComponent).Assembly.GetManifestResourceStream("Hops.resources.Hops_24x24.png");
+                _malt24Icon = ConvertHopsToMaltIcon(new System.Drawing.Bitmap(stream));
+            }
+            return _malt24Icon;
+        }
+        public static System.Drawing.Bitmap Malt48Icon()
+        {
+            if (_malt48Icon == null || true)
+            {
+                var stream = typeof(HopsComponent).Assembly.GetManifestResourceStream("Hops.resources.Hops_48x48.png");
+                _malt48Icon = ConvertHopsToMaltIcon(new System.Drawing.Bitmap(stream));
+            }
+            return _malt48Icon;
+        }
+        private static System.Drawing.Bitmap ConvertHopsToMaltIcon(System.Drawing.Bitmap bmp)
+        {
+            var img = new System.Drawing.Bitmap(bmp.Width, bmp.Height, bmp.PixelFormat);
+            using (var g = System.Drawing.Graphics.FromImage(img))
+            {
+                g.TranslateTransform(bmp.Width/2, bmp.Height/2);
+                g.RotateTransform(180);
+                g.ScaleTransform((bmp.Width - 6f) / bmp.Width, 1.0f);
+                g.TranslateTransform(-bmp.Width / 2 + 3, -bmp.Height / 2);
+                
+                float[][] ptsArray =
+                    {
+                    new float[] {1, 0, 0, 0, 0},
+                    new float[] {0, 1, 0, 0, 0},
+                    new float[] {0, 0, 1, 0, 0},
+                    new float[] {0, 0, 0, 1, 0},
+                    new float[] {.50f, .0F, .0f, .0f, 1},
+                    };
+                var clrMatrix = new System.Drawing.Imaging.ColorMatrix(ptsArray); 
+                var imgAttribs = new System.Drawing.Imaging.ImageAttributes();
+                imgAttribs.SetColorMatrix(clrMatrix,
+                System.Drawing.Imaging.ColorMatrixFlag.Default,
+                System.Drawing.Imaging.ColorAdjustType.Default);
+                g.DrawImage(bmp,
+                  new System.Drawing.Rectangle(0, 0, img.Width, img.Height),
+                0, 0, img.Width, img.Height,
+                System.Drawing.GraphicsUnit.Pixel, imgAttribs);
+                
+            }
+            bmp.Dispose();
+            return img;
+        }
+        #endregion
+
+        #region Menu
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            AppendMenuLocalCompute(menu);
+            AppendMenuCacheInMemory(menu);
+            AppendMenuCacheInServer(menu);
+        }
+        #endregion
+
+        #region Attributes
+        class MaltComponentAttributes : GH_ComponentAttributes
+        {
+            MaltComponent _component;
+            public MaltComponentAttributes(MaltComponent parentComponent) : base(parentComponent)
+            {
+                _component = parentComponent;
+            }
+
+            protected override void Render(GH_Canvas canvas, System.Drawing.Graphics graphics, GH_CanvasChannel channel)
+            {
+                base.Render(canvas, graphics, channel);
+                if (channel == GH_CanvasChannel.Objects &&
+                    GH_Canvas.ZoomFadeMedium > 0 &&
+                    !string.IsNullOrWhiteSpace(_component.RemoteDefinitionLocation)
+                    )
+                {
+                    RenderHop(graphics, GH_Canvas.ZoomFadeMedium, new System.Drawing.PointF(Bounds.Right, Bounds.Bottom));
+                }
+            }
+
+            void RenderHop(System.Drawing.Graphics graphics, int alpha, System.Drawing.PointF anchor)
+            {
+                var boxHops = new System.Drawing.RectangleF(anchor.X - 16, anchor.Y - 8, 16, 16);
+                var bmp = MaltComponent.Malt48Icon();
+                graphics.DrawImage(bmp, boxHops);
+            }
+             
+        }
+
+        public override void CreateAttributes()
+        {
+            Attributes = new MaltComponentAttributes(this);
+        }
+        #endregion
+
+        #region Serialization
+        public override bool Write(GH_IWriter writer)
+        {
+            bool rc = base.Write(writer);
+            if (rc)
+            { 
+                writer.SetBoolean(TagIsDefined, _isDefined);
+            }
+            return rc;
+        }
+        public override bool Read(GH_IReader reader)
+        {
+            bool rc = base.Read(reader);
+            if (rc)
+            { 
+                bool cacheIsDefined = _isDefined;
+                if (reader.TryGetBoolean(TagIsDefined, ref cacheIsDefined))
+                    _isDefined = cacheIsDefined;
+                 
+            }
+            return rc;
+        }
+        #endregion
     }
 }

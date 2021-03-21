@@ -6,10 +6,68 @@ using Rhino.Geometry;
 using Newtonsoft.Json;
 using Resthopper.IO;
 using System.IO;
+using Hops;
 
 namespace Compute.Components
 {
-    class RemoteDefinition : IDisposable
+ 
+
+    public class RemoteParameters
+    {
+        public IoParamSchema[] InputsSchema { get; private set; }
+        public IoParamSchema[] OutputsSchema { get; private set; }
+        public bool HasInputs { get { return InputsSchema.Length > 0; } }
+        public bool HasOutputs { get { return OutputsSchema.Length > 0; } }
+        public int InputCount { get { return InputsSchema.Length; } }
+        public int OutputCount { get { return OutputsSchema.Length; } }
+        private IGH_Param[] _inputs;
+        public IGH_Param[] Inputs
+        {
+            get
+            {
+                if(_inputs == null)
+                {
+                    if (HasInputs)
+                    {
+                        _inputs = new IGH_Param[InputCount];
+                        for (int i = 0; i < InputCount; i++)
+                        {
+                            var sc = InputsSchema[i];
+                            var param = InstantiateParam(Type.GetType(sc.ParamType));
+
+                        }
+                    }
+                    else
+                    {
+                        _inputs = Array.Empty<IGH_Param>();
+                    }
+                }
+                return _inputs;
+            }
+        }
+        public RemoteParameters(IoParamSchema[] inputs, IoParamSchema[] outputs)
+        {
+            InputsSchema = inputs ?? Array.Empty<IoParamSchema>();
+            OutputsSchema = outputs ?? Array.Empty<IoParamSchema>();
+        }
+         
+        public static IGH_Param InstantiateParam(Type type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+            if (type.IsAbstract)
+                throw new ArgumentException(nameof(type) + " is abstract");
+            if (type.IsInterface)
+                throw new ArgumentException(nameof(type) + " is interace");
+
+            IGH_Param param = Activator.CreateInstance(type) as IGH_Param;
+            if (param == null)
+                throw new Exception("Activator.CreateInstance(type) as IGH_Param is null");
+            return param;
+        }
+    }
+
+    public class RemoteDefinition : IDisposable
     {
         enum PathType
         {
@@ -19,7 +77,7 @@ namespace Compute.Components
             NonresponsiveUrl
         }
 
-        HopsComponent _parentComponent;
+        RemoteComponent _parentComponent;
         Dictionary<string, Tuple<InputParamSchema, IGH_Param>> _inputParams;
         Dictionary<string, IGH_Param> _outputParams;
         string _description = null;
@@ -28,19 +86,19 @@ namespace Compute.Components
         string _cacheKey = null;
         PathType? _pathType;
 
-        public static RemoteDefinition Create(string path, HopsComponent parentComponent)
+        public static RemoteDefinition Create(string path, RemoteComponent parentComponent)
         {
             var rc = new RemoteDefinition(path, parentComponent);
             RemoteDefinitionCache.Add(rc);
             return rc;
         }
-
-        private RemoteDefinition(string path, HopsComponent parentComponent)
+     
+        private RemoteDefinition(string path, RemoteComponent parentComponent)
         {
             _parentComponent = parentComponent;
             _path = path;
         }
-
+    
         public void Dispose()
         {
             _parentComponent = null;
